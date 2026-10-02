@@ -100,7 +100,7 @@ export class Stage {
             ctx.lineTo(X(s.target), y + 4);
             ctx.stroke();
             ctx.fillStyle = c.ink2;
-            ctx.font = `italic 13px ${c.serif}`;
+            ctx.font = `italic 14px ${c.math}`;
             ctx.fillText(`e = ${e.toFixed(1)}`, (X(s.position) + X(s.target)) / 2, y + 15);
         }
 
@@ -160,7 +160,7 @@ export class Stage {
             arrow(ctx, x, y, f * FORCE_PX, color, width);
             if (Math.abs(f) * FORCE_PX > 6) {
                 ctx.fillStyle = color;
-                ctx.font = `${label === 'u' ? 'italic ' : ''}11px ${label === 'u' ? c.serif : c.mono}`;
+                ctx.font = label === 'u' ? `italic 13px ${c.math}` : `11px ${c.mono}`;
                 ctx.textAlign = f > 0 ? 'right' : 'left';
                 ctx.fillText(label, x - Math.sign(f) * 6, y + 4);
             }

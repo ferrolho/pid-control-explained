@@ -34,7 +34,7 @@ function readColors() {
         d: v('--d'),
         warn: v('--warn'),
         mono: v('--font-mono'),
-        serif: v('--font-serif'),
+        math: v('--font-math'),
     };
 }
 
