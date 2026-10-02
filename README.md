@@ -1,8 +1,8 @@
-# Interactive PID Control Demo
+# PID Control, Explained
 
 An educational web application for learning PID (Proportional-Integral-Derivative) control through interactive visualization and hands-on experimentation.
 
-**[Live Demo](https://ferrolho.github.io/pid-control-demo/)**
+**[Live Demo](https://ferrolho.github.io/pid-control-explained/)**
 
 ## Overview
 
@@ -128,7 +128,7 @@ Where:
 ## File Structure
 
 ```
-pid-control-demo/
+pid-control-explained/
 ├── index.html                  # Main page
 ├── styles/
 │   ├── main.css               # Layout & responsive design
@@ -166,8 +166,8 @@ No transpilation needed.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/ferrolho/pid-control-demo.git
-   cd pid-control-demo
+   git clone https://github.com/ferrolho/pid-control-explained.git
+   cd pid-control-explained
    ```
 
 2. Serve with any static file server:
@@ -189,7 +189,7 @@ No transpilation needed.
 1. Push code to GitHub repository
 2. Go to repository Settings → Pages
 3. Select "Deploy from main branch" and root directory
-4. Site will be available at `https://ferrolho.github.io/pid-control-demo/`
+4. Site will be available at `https://ferrolho.github.io/pid-control-explained/`
 
 ## Future Enhancements
 
