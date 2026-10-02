@@ -1,420 +1,278 @@
 /**
- * Main Application
+ * PID Control, Explained — wires the simulation to the page.
  *
- * Orchestrates:
- * - PID controller → simulation → visualization
- * - Event loop at 60 FPS
- * - UI event handlers
- * - Data recording for graphs
- * - Performance metrics calculation
+ * The controller and physics advance on a fixed clock (see runner.js); each animation
+ * frame runs however many control ticks of real time have passed, then redraws.
  */
 
-import { PIDController } from './pid-controller.js';
-import { CartSimulation } from './simulation.js';
-import { Visualization } from './visualization.js';
-import { Graphs } from './graphs.js';
-import { SidePanel } from './side-panel.js';
-import { getPreset } from './presets.js';
+import { Runner, CONTROL_HZ } from './runner.js';
+import { PRESETS, getPreset } from './presets.js';
+import { Stage } from './stage.js';
+import { StripChart, WINDOW_S } from './plots.js';
+import { Learn } from './learn.js';
+
+const AUTO_STEP_S = 6;
+const PUSH_FORCE = 40;
+const MAX_TICKS_PER_FRAME = 20;
+
+const $ = (id) => document.getElementById(id);
+
+function readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (n) => cs.getPropertyValue(n).trim();
+    return {
+        bg: v('--bg'),
+        ink: v('--ink'),
+        ink2: v('--ink-2'),
+        ink3: v('--ink-3'),
+        line2: v('--line-2'),
+        grid: v('--grid'),
+        accent: v('--accent'),
+        accentSoft: v('--accent-soft'),
+        p: v('--p'),
+        i: v('--i'),
+        d: v('--d'),
+        warn: v('--warn'),
+        mono: v('--font-mono'),
+        serif: v('--font-serif'),
+    };
+}
 
 class App {
     constructor() {
-        // Core components (defaults match 'well-tuned' preset)
-        this.pid = new PIDController(8.0, 3.0, 5.0);
-        this.simulation = new CartSimulation();
-        this.simulation.setFriction(0.5);
-        this.visualization = new Visualization('simulation-canvas');
-        this.graphs = new Graphs();
-        this.sidePanel = new SidePanel();
-
-        // State
-        this.target = 50;
+        this.runner = new Runner();
+        this.samples = [];
         this.running = true;
-        this.time = 0;
-        this.dt = 1 / 60; // 60 FPS
+        this.preset = null;
+        this.lastStep = { from: 30, to: 70 };
+        this.autoTimer = 0;
 
-        // Auto-step mode
-        this.autoStepEnabled = false;
-        this.autoStepInterval = 5; // seconds
-        this.autoStepTimer = 0;
-        this.autoStepPositions = [25, 75];
-        this.autoStepIndex = 0;
+        // Shared by reference, so a theme change recolours everything in place.
+        this.colors = readColors();
+        this.stage = new Stage($('stage'), this.colors);
+        this.position = new StripChart(
+            $('plot-position'),
+            {
+                range: [0, 100],
+                series: [
+                    { key: 'target', color: 'accent', width: 1.5, dash: [5, 4] },
+                    { key: 'position', color: 'ink', width: 2 },
+                ],
+                band: (s) => (s.band ? [s.target - s.band, s.target + s.band] : null),
+            },
+            this.colors,
+        );
+        this.force = new StripChart(
+            $('plot-force'),
+            {
+                range: 'symmetric',
+                cap: 400,
+                series: [
+                    { key: 'p', color: 'p', width: 1.25 },
+                    { key: 'i', color: 'i', width: 1.25 },
+                    { key: 'd', color: 'd', width: 1.25 },
+                    { key: 'u', color: 'ink', width: 2.25 },
+                ],
+                lines: [
+                    { y: 100, color: 'warn', dash: [3, 3] },
+                    { y: -100, color: 'warn', dash: [3, 3] },
+                ],
+            },
+            this.colors,
+        );
+        new Learn();
 
-        // Performance metrics
-        this.metrics = {
-            riseTime: null,
-            settlingTime: null,
-            overshoot: null,
-            steadyStateError: null
-        };
-        this.metricTracking = {
-            startTime: null,
-            startPosition: null,
-            peakValue: null,
-            targetReached: false,
-            settledTime: null
-        };
+        this.buildPresets();
+        this.bind();
+        const fromUrl = new URLSearchParams(location.search).get('preset');
+        this.applyPreset(PRESETS[fromUrl] ? fromUrl : 'well-tuned');
 
-        this.init();
+        matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () =>
+            Object.assign(this.colors, readColors()),
+        );
+        document.fonts?.ready.then(() => Object.assign(this.colors, readColors()));
+
+        this.last = performance.now();
+        this.acc = 0;
+        requestAnimationFrame((t) => this.frame(t));
     }
 
-    /**
-     * Initialize application
-     */
-    init() {
-        // Initialize graphs
-        this.graphs.init();
+    // ───────── Controls ─────────
 
-        // Setup UI event handlers
-        this.setupEventHandlers();
-
-        // Setup resizable divider
-        this.setupResizeHandle();
-
-        // Start animation loop
-        this.animate();
+    buildPresets() {
+        $('presets').innerHTML = Object.entries(PRESETS)
+            .map(([id, p]) => `<button class="preset" data-preset="${id}" aria-pressed="false">${p.name}</button>`)
+            .join('');
+        $('presets').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-preset]');
+            if (b) this.applyPreset(b.dataset.preset);
+        });
     }
 
-    /**
-     * Setup all UI event handlers
-     */
-    setupEventHandlers() {
-        // PID gain sliders
-        document.getElementById('kp-slider').addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            this.pid.kp = value;
-            document.getElementById('kp-value').textContent = value.toFixed(1);
-        });
-
-        document.getElementById('ki-slider').addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            this.pid.ki = value;
-            document.getElementById('ki-value').textContent = value.toFixed(2);
-        });
-
-        document.getElementById('kd-slider').addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            this.pid.kd = value;
-            document.getElementById('kd-value').textContent = value.toFixed(1);
-        });
-
-        // Target position slider
-        document.getElementById('target-slider').addEventListener('input', (e) => {
-            if (!this.autoStepEnabled) {
-                this.setTarget(parseFloat(e.target.value));
-            }
-        });
-
-        // Gravity (rail tilt) slider
-        document.getElementById('gravity-slider').addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            this.simulation.setGravity(value);
-            this.visualization.setGravity(value);
-            document.getElementById('gravity-value').textContent = value.toFixed(1);
-        });
-
-        // Canvas click to set target
-        document.getElementById('simulation-canvas').addEventListener('click', (e) => {
-            if (!this.autoStepEnabled) {
-                const rect = e.target.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                const position = this.visualization.clickToPosition(clickX);
-                if (position !== null) {
-                    this.setTarget(position);
-                    document.getElementById('target-slider').value = position;
-                }
-            }
-        });
-
-        // Auto-step toggle
-        document.getElementById('auto-step-toggle').addEventListener('change', (e) => {
-            this.autoStepEnabled = e.target.checked;
-            if (this.autoStepEnabled) {
-                this.autoStepTimer = 0;
-                this.autoStepIndex = 0;
-                this.setTarget(this.autoStepPositions[0]);
-                // Disable manual target slider
-                document.getElementById('target-slider').disabled = true;
-            } else {
-                // Re-enable manual target slider
-                document.getElementById('target-slider').disabled = false;
-            }
-        });
-
-        // Play/Pause button
-        document.getElementById('play-pause-btn').addEventListener('click', () => {
-            this.running = !this.running;
-            const btn = document.getElementById('play-pause-btn');
-            btn.textContent = this.running ? '⏸ Pause' : '▶ Play';
-        });
-
-        // Reset button
-        document.getElementById('reset-btn').addEventListener('click', () => {
-            this.reset();
-        });
-
-        // Disturbance button
-        document.getElementById('disturbance-btn').addEventListener('click', () => {
-            this.simulation.addDisturbance(30);
-        });
-
-        // Preset buttons
-        document.querySelectorAll('.preset-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.applyPreset(btn.dataset.preset);
+    bind() {
+        const gain = (id, key) => {
+            $(id).addEventListener('input', (e) => {
+                this.runner.pid[key] = parseFloat(e.target.value);
+                this.showGains();
+                this.markCustom();
             });
-        });
-    }
-
-    /**
-     * Setup draggable resize handle between main content and side panel
-     */
-    setupResizeHandle() {
-        const handle = document.getElementById('resize-handle');
-        const panel = document.getElementById('side-panel');
-        const container = document.querySelector('.app-container');
-
-        if (!handle || !panel) return;
-
-        let isDragging = false;
-
-        handle.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            handle.classList.add('dragging');
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-            e.preventDefault();
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-
-            const containerRect = container.getBoundingClientRect();
-            const containerWidth = containerRect.width;
-            const mouseX = e.clientX - containerRect.left;
-            const panelWidth = containerWidth - mouseX;
-
-            // Clamp between 20% and 60% of container
-            const minWidth = containerWidth * 0.2;
-            const maxWidth = containerWidth * 0.6;
-            const clampedWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth));
-
-            panel.style.width = clampedWidth + 'px';
-        });
-
-        document.addEventListener('mouseup', () => {
-            if (isDragging) {
-                isDragging = false;
-                handle.classList.remove('dragging');
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-            }
-        });
-    }
-
-    /**
-     * Set new target position
-     */
-    setTarget(newTarget) {
-        this.target = newTarget;
-        document.getElementById('target-value').textContent = Math.round(newTarget);
-
-        // Reset metrics tracking
-        this.resetMetrics();
-    }
-
-    /**
-     * Apply a preset configuration
-     */
-    applyPreset(presetName) {
-        const preset = getPreset(presetName);
-        if (!preset) return;
-
-        // Update PID gains
-        this.pid.setGains(preset.kp, preset.ki, preset.kd);
-
-        // Update sliders and displays
-        document.getElementById('kp-slider').value = preset.kp;
-        document.getElementById('kp-value').textContent = preset.kp.toFixed(1);
-
-        document.getElementById('ki-slider').value = preset.ki;
-        document.getElementById('ki-value').textContent = preset.ki.toFixed(2);
-
-        document.getElementById('kd-slider').value = preset.kd;
-        document.getElementById('kd-value').textContent = preset.kd.toFixed(1);
-
-        // Update physics parameters
-        const gravity = preset.gravity || 0;
-        this.simulation.setFriction(preset.friction);
-        this.simulation.setGravity(gravity);
-        this.visualization.setGravity(gravity);
-        document.getElementById('gravity-slider').value = gravity;
-        document.getElementById('gravity-value').textContent = gravity.toFixed(1);
-
-        // Reset system
-        this.reset();
-    }
-
-    /**
-     * Reset simulation
-     */
-    reset() {
-        this.simulation.reset(this.simulation.position);
-        this.pid.reset();
-        this.visualization.clearTrail();
-        this.graphs.clear();
-        this.time = 0;
-        this.resetMetrics();
-    }
-
-    /**
-     * Reset metrics tracking
-     */
-    resetMetrics() {
-        this.metricTracking = {
-            startTime: this.time,
-            startPosition: this.simulation.position,
-            peakValue: this.simulation.position,
-            targetReached: false,
-            settledTime: null
         };
-        this.metrics = {
-            riseTime: null,
-            settlingTime: null,
-            overshoot: null,
-            steadyStateError: null
+        gain('kp', 'kp');
+        gain('ki', 'ki');
+        gain('kd', 'kd');
+
+        $('target').addEventListener('input', (e) => this.setTarget(parseFloat(e.target.value)));
+        $('tilt').addEventListener('input', (e) => {
+            this.runner.sim.setGravity(parseFloat(e.target.value));
+            this.showScenario();
+            this.markCustom();
+        });
+        $('antiwindup').addEventListener('change', (e) => {
+            this.runner.pid.antiWindup = e.target.checked;
+            this.markCustom();
+        });
+        $('autostep').addEventListener('change', (e) => {
+            this.autoTimer = 0;
+            $('target').disabled = e.target.checked;
+        });
+
+        $('stage').addEventListener('click', (e) => {
+            if ($('autostep').checked) return;
+            const pos = this.stage.positionAt(e.clientX, this.runner.sim.gravity);
+            if (pos !== null) this.setTarget(Math.round(Math.max(5, Math.min(95, pos))));
+        });
+
+        $('play-btn').addEventListener('click', () => {
+            this.running = !this.running;
+            $('play-btn').setAttribute('aria-pressed', String(this.running));
+            $('play-btn').innerHTML = this.running ? '<span class="ico">❚❚</span> Pause' : '<span class="ico">▶</span> Play';
+            this.last = performance.now();
+        });
+        $('replay-btn').addEventListener('click', () => this.restart(this.lastStep.from, this.lastStep.to));
+        $('push-btn').addEventListener('click', () =>
+            this.runner.sim.addDisturbance((Math.random() < 0.5 ? -1 : 1) * PUSH_FORCE),
+        );
+    }
+
+    applyPreset(id) {
+        const p = getPreset(id);
+        if (!p) return;
+        this.preset = id;
+        const { pid, sim } = this.runner;
+        pid.setGains(p.kp, p.ki, p.kd);
+        pid.antiWindup = p.antiWindup;
+        sim.setFriction(p.friction);
+        sim.setGravity(p.gravity);
+        $('kp').value = p.kp;
+        $('ki').value = p.ki;
+        $('kd').value = p.kd;
+        $('tilt').value = p.gravity;
+        $('antiwindup').checked = p.antiWindup;
+        this.showGains();
+        this.restart(p.from, p.to);
+        document.querySelectorAll('.preset').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.preset === id)));
+        $('preset-note').textContent = p.behaviour;
+    }
+
+    markCustom() {
+        if (!this.preset) return;
+        this.preset = null;
+        document.querySelectorAll('.preset').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+        $('preset-note').textContent = 'Custom settings. Replay the step to see how they respond.';
+    }
+
+    /** Put the cart back at `from` and command a step to `to`, clearing the plots. */
+    restart(from, to) {
+        this.runner.restart(from, to);
+        this.lastStep = { from, to };
+        this.autoPair = { from, to };
+        this.samples = [];
+        this.stage.clearTrail();
+        this.autoTimer = 0;
+        $('target').value = to;
+        this.showScenario();
+        this.showMetrics();
+    }
+
+    setTarget(target) {
+        this.lastStep = { from: Math.round(this.runner.sim.position), to: target };
+        this.runner.setTarget(target);
+        $('target').value = target;
+        this.showScenario();
+    }
+
+    showGains() {
+        const { kp, ki, kd } = this.runner.pid;
+        $('kp-out').textContent = kp.toFixed(1);
+        $('ki-out').textContent = ki.toFixed(2);
+        $('kd-out').textContent = kd.toFixed(1);
+    }
+
+    showScenario() {
+        $('target-out').textContent = Math.round(this.runner.target);
+        const g = this.runner.sim.gravity;
+        $('tilt-out').textContent = g === 0 ? 'level' : `${g > 0 ? '+' : '−'}${Math.abs(g).toFixed(1)}`;
+    }
+
+    showMetrics() {
+        const m = this.runner.metrics;
+        const set = (id, v, unit, d = 2) => {
+            const el = $(id);
+            el.textContent = v === null ? '—' : `${v.toFixed(d)}${unit}`;
+            el.classList.toggle('pending', v === null);
         };
+        set('m-rise', m.riseTime, ' s');
+        set('m-overshoot', m.overshoot, '%', 1);
+        set('m-settle', m.settlingTime, ' s');
+        set('m-sse', m.steadyStateError, '');
     }
 
-    /**
-     * Update metrics based on current state
-     */
-    updateMetrics() {
-        const position = this.simulation.position;
-        const error = this.target - position;
-        const tolerance = 2; // 2% tolerance for settling
+    // ───────── Loop ─────────
 
-        // Track peak value for overshoot calculation
-        if (this.metricTracking.startPosition < this.target) {
-            // Moving up
-            if (position > this.metricTracking.peakValue) {
-                this.metricTracking.peakValue = position;
-            }
-        } else {
-            // Moving down
-            if (position < this.metricTracking.peakValue) {
-                this.metricTracking.peakValue = position;
-            }
-        }
+    frame(now) {
+        const elapsed = Math.min(0.25, (now - this.last) / 1000);
+        this.last = now;
 
-        // Rise time: time to first reach target (within tolerance)
-        if (!this.metricTracking.targetReached && Math.abs(error) <= tolerance) {
-            this.metrics.riseTime = this.time - this.metricTracking.startTime;
-            this.metricTracking.targetReached = true;
-        }
-
-        // Settling time: time to reach and stay within tolerance
-        if (this.metricTracking.targetReached) {
-            if (Math.abs(error) <= tolerance) {
-                if (this.metricTracking.settledTime === null) {
-                    this.metricTracking.settledTime = this.time;
-                }
-            } else {
-                // Left the tolerance band, reset settled time
-                this.metricTracking.settledTime = null;
-            }
-
-            // Consider settled if stayed in band for 0.5 seconds
-            if (this.metricTracking.settledTime !== null &&
-                (this.time - this.metricTracking.settledTime) >= 0.5) {
-                if (this.metrics.settlingTime === null) {
-                    this.metrics.settlingTime = this.metricTracking.settledTime - this.metricTracking.startTime;
-                }
-            }
-        }
-
-        // Overshoot: percentage beyond target
-        if (this.metricTracking.targetReached && this.metrics.overshoot === null) {
-            const targetChange = Math.abs(this.target - this.metricTracking.startPosition);
-            if (targetChange > 1) {
-                const overshootAmount = Math.abs(this.metricTracking.peakValue - this.target);
-                this.metrics.overshoot = (overshootAmount / targetChange) * 100;
-            }
-        }
-
-        // Steady-state error: error after settling (measured 3 seconds after start)
-        if (this.time - this.metricTracking.startTime >= 3.0) {
-            this.metrics.steadyStateError = Math.abs(error);
-        }
-
-        // Update display
-        this.updateMetricsDisplay();
-    }
-
-    /**
-     * Update metrics display
-     */
-    updateMetricsDisplay() {
-        document.getElementById('rise-time-value').textContent =
-            this.metrics.riseTime !== null ? `${this.metrics.riseTime.toFixed(2)}s` : '—';
-
-        document.getElementById('settling-time-value').textContent =
-            this.metrics.settlingTime !== null ? `${this.metrics.settlingTime.toFixed(2)}s` : '—';
-
-        document.getElementById('overshoot-value').textContent =
-            this.metrics.overshoot !== null ? `${this.metrics.overshoot.toFixed(1)}%` : '—';
-
-        document.getElementById('ss-error-value').textContent =
-            this.metrics.steadyStateError !== null ? `${this.metrics.steadyStateError.toFixed(2)}` : '—';
-    }
-
-    /**
-     * Main animation loop
-     */
-    animate() {
         if (this.running) {
-            // Auto-step mode
-            if (this.autoStepEnabled) {
-                this.autoStepTimer += this.dt;
-                if (this.autoStepTimer >= this.autoStepInterval) {
-                    this.autoStepTimer = 0;
-                    this.autoStepIndex = (this.autoStepIndex + 1) % this.autoStepPositions.length;
-                    this.setTarget(this.autoStepPositions[this.autoStepIndex]);
-                    document.getElementById('target-slider').value = this.target;
+            this.acc += elapsed;
+            const dt = 1 / CONTROL_HZ;
+            let ticks = 0;
+            while (this.acc >= dt && ticks < MAX_TICKS_PER_FRAME) {
+                if ($('autostep').checked && (this.autoTimer += dt) >= AUTO_STEP_S) {
+                    this.autoTimer = 0;
+                    const { from, to } = this.autoPair;
+                    this.setTarget(Math.abs(this.runner.target - to) < 0.5 ? from : to);
                 }
+                const s = this.runner.tick();
+                s.band = this.runner.metrics.valid ? 0.02 * Math.abs(this.runner.metrics.step) : 0;
+                this.samples.push(s);
+                this.acc -= dt;
+                ticks++;
             }
-
-            // Calculate error
-            const position = this.simulation.position;
-            const error = this.target - position;
-
-            // Update PID controller
-            const { output, pTerm, iTerm, dTerm } = this.pid.update(error, position, this.dt);
-
-            // Update simulation
-            this.simulation.update(output, this.dt);
-
-            // Get current state
-            const state = this.simulation.getState();
-
-            // Update visualization
-            this.visualization.draw(state.position, this.target, state.disturbance);
-
-            // Update graphs
-            this.graphs.update(this.time, this.target, state.position, error, { pTerm, iTerm, dTerm });
-
-            // Update metrics
-            this.updateMetrics();
-
-            // Increment time
-            this.time += this.dt;
+            if (ticks === MAX_TICKS_PER_FRAME) this.acc = 0;
+            const cutoff = this.runner.time - WINDOW_S - 0.1;
+            while (this.samples.length && this.samples[0].t < cutoff) this.samples.shift();
         }
 
-        // Continue animation loop
-        requestAnimationFrame(() => this.animate());
+        const s = this.runner.last;
+        if (s) {
+            this.stage.draw(s);
+            this.position.draw(this.samples, this.runner.time);
+            this.force.draw(this.samples, this.runner.time);
+            if (!this.legendAt || now - this.legendAt > 100) {
+                this.legendAt = now;
+                $('l-target').textContent = s.target.toFixed(1);
+                $('l-position').textContent = s.position.toFixed(1);
+                const f = (v) => (Math.abs(v) < 0.5 ? '0' : v.toFixed(0));
+                $('l-u').textContent = f(s.u);
+                $('l-p').textContent = f(s.p);
+                $('l-i').textContent = f(s.i);
+                $('l-d').textContent = f(s.d);
+                this.showMetrics();
+            }
+        }
+        requestAnimationFrame((t) => this.frame(t));
     }
 }
 
-// Start application when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    new App();
-});
+new App();

@@ -1,105 +1,64 @@
 /**
- * 1D Cart Simulation
+ * 1D cart on a rail: F = ma with viscous friction, a constant force from tilting
+ * the rail, and impulse disturbances that decay over time.
  *
- * Simple physics simulation of a cart on a rail
- * F = ma with viscous friction, gravity, and disturbances
- *
- * State: position, velocity
- * Parameters: mass (inertia), friction (viscous damping), gravity (constant force, e.g. tilted rail)
+ * State: position (0–100 along the rail) and velocity. All rates are in seconds, so
+ * the simulation behaves the same at any frame rate.
  */
 
 export class CartSimulation {
     constructor() {
-        // State
-        this.position = 50; // 0-100 scale
+        this.position = 50;
         this.velocity = 0;
 
-        // Physical parameters
-        this.mass = 1.0; // kg
-        this.friction = 0.2; // viscous friction coefficient
-        this.gravity = 0; // constant force (e.g. tilted rail)
+        this.mass = 1.0;
+        this.friction = 0.5; // viscous: force = -friction × velocity, so zero at rest
+        this.gravity = 0; // constant force along the rail (tilt)
 
-        // Bounds
         this.minPosition = 0;
         this.maxPosition = 100;
 
-        // Disturbance state
         this.disturbanceForce = 0;
-        this.disturbanceDecay = 0.95;
+        this.disturbanceTau = 0.325; // seconds for a disturbance to decay to ~37%
     }
 
-    /**
-     * Update simulation with control input
-     * @param {number} controlForce - Force from PID controller
-     * @param {number} dt - Time step in seconds
-     */
+    /** Advance by dt seconds with the given control force (semi-implicit Euler). */
     update(controlForce, dt) {
-        // Apply disturbance (decays over time)
-        if (Math.abs(this.disturbanceForce) > 0.01) {
-            this.disturbanceForce *= this.disturbanceDecay;
-        } else {
-            this.disturbanceForce = 0;
-        }
+        this.disturbanceForce *= Math.exp(-dt / this.disturbanceTau);
+        if (Math.abs(this.disturbanceForce) < 0.01) this.disturbanceForce = 0;
 
-        // Total force = control + disturbance + gravity - friction
-        const frictionForce = -this.friction * this.velocity;
-        const totalForce = controlForce + this.disturbanceForce + this.gravity + frictionForce;
-
-        // F = ma => a = F/m
-        const acceleration = totalForce / this.mass;
-
-        // Euler integration
-        this.velocity += acceleration * dt;
+        const totalForce = controlForce + this.disturbanceForce + this.gravity - this.friction * this.velocity;
+        this.velocity += (totalForce / this.mass) * dt;
         this.position += this.velocity * dt;
 
-        // Bound position and stop at boundaries
+        // End stops: the cart stops dead and can only move away from the wall.
         if (this.position <= this.minPosition) {
             this.position = this.minPosition;
-            this.velocity = Math.max(0, this.velocity); // Can only move right
+            this.velocity = Math.max(0, this.velocity);
         } else if (this.position >= this.maxPosition) {
             this.position = this.maxPosition;
-            this.velocity = Math.min(0, this.velocity); // Can only move left
+            this.velocity = Math.min(0, this.velocity);
         }
     }
 
-    /**
-     * Add an impulse disturbance
-     * @param {number} force - Magnitude of disturbance force
-     */
     addDisturbance(force = 30) {
         this.disturbanceForce = force;
     }
 
-    /**
-     * Reset simulation state
-     */
     reset(position = 50) {
         this.position = position;
         this.velocity = 0;
         this.disturbanceForce = 0;
     }
 
-    /**
-     * Get current state
-     */
     getState() {
-        return {
-            position: this.position,
-            velocity: this.velocity,
-            disturbance: this.disturbanceForce
-        };
+        return { position: this.position, velocity: this.velocity, disturbance: this.disturbanceForce };
     }
 
-    /**
-     * Set friction coefficient
-     */
     setFriction(friction) {
         this.friction = friction;
     }
 
-    /**
-     * Set gravity (constant force, e.g. tilted rail)
-     */
     setGravity(gravity) {
         this.gravity = gravity;
     }

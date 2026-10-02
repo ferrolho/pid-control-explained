@@ -1,159 +1,141 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PID Control, Explained</title>
-    <link rel="stylesheet" href="styles/main.css">
-    <link rel="stylesheet" href="styles/components.css">
-    <link rel="stylesheet" href="styles/side-panel.css">
+    <meta name="description" content="An interactive explanation of PID control: tune P, I, and D on a simulated cart and watch the response, with live plots and step-response metrics.">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&family=Instrument+Serif:ital@0;1&display=swap">
+    <link rel="stylesheet" href="styles/app.css">
+    <script>
+        // ?theme=light|dark (set by embedding pages) wins over the system preference.
+        const t = new URLSearchParams(location.search).get('theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    </script>
 </head>
 <body>
-    <div class="app-container">
-        <div class="main-content">
-            <header class="app-header">
-                <h1>PID Control, Explained</h1>
-                <div class="equation-display">
-                    <span class="equation-label">Control Signal:</span>
-                    <span class="equation">
-                        <span class="term-label">u(t)</span> =
-                        <span class="term p-term" data-term="proportional" title="Proportional term">
-                            K<sub>p</sub>
-                        </span>·<span data-term="error-signal">e(t)</span> +
-                        <span class="term i-term" data-term="integral" title="Integral term">
-                            K<sub>i</sub>
-                        </span>·∫<span data-term="error-signal">e(t)</span>dt +
-                        <span class="term d-term" data-term="derivative" title="Derivative term">
-                            K<sub>d</sub>
-                        </span>·d<span data-term="error-signal">e(t)</span>/dt
-                    </span>
+    <div class="app">
+        <header class="top">
+            <div class="title">
+                <h1>PID Control, <em>Explained</em></h1>
+                <p class="equation" aria-label="u equals K p times e, plus K i times the integral of e, minus K d times the derivative of x">
+                    <span class="var">u</span> =
+                    <button class="term p" data-term="proportional">K<sub>p</sub>&#8202;<span class="var">e</span></button> +
+                    <button class="term i" data-term="integral">K<sub>i</sub>&#8202;∫<span class="var">e</span>&#8202;dt</button> −
+                    <button class="term d" data-term="derivative">K<sub>d</sub>&#8202;d<span class="var">x</span>/dt</button>
+                </p>
+            </div>
+            <div class="actions">
+                <button class="btn" id="play-btn" aria-pressed="true"><span class="ico">❚❚</span> Pause</button>
+                <button class="btn" id="replay-btn"><span class="ico">↺</span> Replay step</button>
+                <button class="btn" id="push-btn"><span class="ico">↯</span> Push cart</button>
+                <button class="btn btn-learn" id="learn-btn">Learn</button>
+            </div>
+        </header>
+
+        <main class="main">
+            <section class="left">
+                <div class="card stage-card">
+                    <div class="card-head">
+                        <span class="label">Cart on a rail · force-controlled</span>
+                        <span class="hint">click the rail to move the target</span>
+                    </div>
+                    <canvas id="stage" aria-label="A cart on a rail, pushed by the PID controller towards the orange target marker. Click the rail to move the target."></canvas>
                 </div>
-                <p class="equation-hint">💡 Click on terms to learn more</p>
-                <p class="system-description">A 1D cart on a rail controlled by a single <strong>force</strong> input · State: position &amp; velocity · Dynamics: <em>F = ma</em> with friction and gravity</p>
+
+                <div class="metrics" aria-live="polite">
+                    <button class="metric" data-term="rise-time"><span class="k">Rise time</span><span class="v" id="m-rise">—</span></button>
+                    <button class="metric" data-term="overshoot"><span class="k">Overshoot</span><span class="v" id="m-overshoot">—</span></button>
+                    <button class="metric" data-term="settling-time"><span class="k">Settling time</span><span class="v" id="m-settle">—</span></button>
+                    <button class="metric" data-term="steady-state-error"><span class="k">Steady-state error</span><span class="v" id="m-sse">—</span></button>
+                </div>
+
+                <div class="card plot-card">
+                    <div class="card-head">
+                        <span class="label">Position</span>
+                        <span class="legend">
+                            <span class="key target">target <b id="l-target">—</b></span>
+                            <span class="key position">position <b id="l-position">—</b></span>
+                            <span class="key band">±2% band</span>
+                        </span>
+                    </div>
+                    <canvas id="plot-position" aria-label="Plot of target and position over the last 10 seconds"></canvas>
+                </div>
+
+                <div class="card plot-card">
+                    <div class="card-head">
+                        <button class="label" data-term="control-signal">Control force</button>
+                        <span class="legend">
+                            <span class="key u">u <b id="l-u">—</b></span>
+                            <span class="key p">P <b id="l-p">—</b></span>
+                            <span class="key i">I <b id="l-i">—</b></span>
+                            <span class="key d">D <b id="l-d">—</b></span>
+                            <span class="key sat">±100 limit</span>
+                        </span>
+                    </div>
+                    <canvas id="plot-force" aria-label="Plot of the control force and its P, I and D terms over the last 10 seconds"></canvas>
+                </div>
+            </section>
+
+            <aside class="right">
+                <section class="panel">
+                    <h2>Gains</h2>
+                    <div class="gain p">
+                        <label for="kp"><button class="name" data-term="proportional">K<sub>p</sub></button><span class="what">spring</span><output id="kp-out">—</output></label>
+                        <input type="range" id="kp" min="0" max="20" step="0.1">
+                    </div>
+                    <div class="gain i">
+                        <label for="ki"><button class="name" data-term="integral">K<sub>i</sub></button><span class="what">memory</span><output id="ki-out">—</output></label>
+                        <input type="range" id="ki" min="0" max="5" step="0.05">
+                    </div>
+                    <div class="gain d">
+                        <label for="kd"><button class="name" data-term="derivative">K<sub>d</sub></button><span class="what">damper</span><output id="kd-out">—</output></label>
+                        <input type="range" id="kd" min="0" max="20" step="0.1">
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <h2>Presets</h2>
+                    <div class="presets" id="presets"></div>
+                    <p class="preset-note" id="preset-note"></p>
+                </section>
+
+                <section class="panel">
+                    <h2>Scenario</h2>
+                    <div class="field">
+                        <label for="target">Target <output id="target-out">—</output></label>
+                        <input type="range" id="target" min="5" max="95" step="1">
+                    </div>
+                    <div class="field">
+                        <label for="tilt">Rail tilt <output id="tilt-out">—</output></label>
+                        <input type="range" id="tilt" min="-15" max="15" step="0.5">
+                    </div>
+                    <label class="switch"><input type="checkbox" id="antiwindup"><span></span><button class="link" data-term="integral-windup">Anti-windup</button></label>
+                    <label class="switch"><input type="checkbox" id="autostep"><span></span>Auto-step every 6 s</label>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <div class="drawer" id="drawer" hidden>
+        <div class="drawer-backdrop" data-close></div>
+        <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+            <header class="drawer-head">
+                <h2 id="drawer-title">Learn</h2>
+                <button class="icon-btn" data-close aria-label="Close">✕</button>
             </header>
-
-            <section class="simulation-section">
-                <canvas id="simulation-canvas" width="800" height="200"></canvas>
-                <div class="sim-controls">
-                    <div class="sim-control-group">
-                        <label for="target-slider">
-                            Target Position: <span id="target-value">50</span>
-                        </label>
-                        <input type="range" id="target-slider" min="10" max="90" value="50" step="1">
-                    </div>
-                    <div class="sim-control-group">
-                        <label for="gravity-slider">
-                            Rail Tilt: <span id="gravity-value">0.0</span>
-                        </label>
-                        <input type="range" id="gravity-slider" min="-10" max="10" value="0" step="0.5">
-                    </div>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="auto-step-toggle">
-                        <span>Auto-step mode</span>
-                    </label>
-                </div>
-            </section>
-
-            <section class="controls-section">
-                <div class="pid-controls">
-                    <div class="control-group">
-                        <label for="kp-slider">
-                            <span class="p-term" data-term="proportional">K<sub>p</sub></span>:
-                            <span id="kp-value">8.0</span>
-                            <span class="control-hint">"Spring-like"</span>
-                        </label>
-                        <input type="range" id="kp-slider" min="0" max="20" value="8.0" step="0.1" class="p-slider">
-                    </div>
-                    <div class="control-group">
-                        <label for="ki-slider">
-                            <span class="i-term" data-term="integral">K<sub>i</sub></span>:
-                            <span id="ki-value">3.00</span>
-                            <span class="control-hint">"Eliminates error"</span>
-                        </label>
-                        <input type="range" id="ki-slider" min="0" max="5" value="3.0" step="0.01" class="i-slider">
-                    </div>
-                    <div class="control-group">
-                        <label for="kd-slider">
-                            <span class="d-term" data-term="derivative">K<sub>d</sub></span>:
-                            <span id="kd-value">5.0</span>
-                            <span class="control-hint">"Damping"</span>
-                        </label>
-                        <input type="range" id="kd-slider" min="0" max="20" value="5.0" step="0.1" class="d-slider">
-                    </div>
-                </div>
-
-                <div class="preset-controls">
-                    <label>Presets:</label>
-                    <button class="preset-btn" data-preset="well-tuned">Well-tuned</button>
-                    <button class="preset-btn" data-preset="too-much-p">Too much P</button>
-                    <button class="preset-btn" data-preset="no-damping">No damping</button>
-                    <button class="preset-btn" data-preset="p-only-friction">P-only (tilted rail)</button>
-                    <button class="preset-btn" data-preset="aggressive-d">Aggressive D</button>
-                </div>
-
-                <div class="action-controls">
-                    <button id="play-pause-btn" class="primary-btn">⏸ Pause</button>
-                    <button id="reset-btn">↻ Reset</button>
-                    <button id="disturbance-btn">⚡ Add Disturbance</button>
-                </div>
-            </section>
-
-            <section class="metrics-section">
-                <h3>Performance Metrics</h3>
-                <div class="metrics-grid">
-                    <div class="metric">
-                        <span class="metric-label" data-term="rise-time">Rise Time:</span>
-                        <span class="metric-value" id="rise-time-value">—</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label" data-term="settling-time">Settling Time:</span>
-                        <span class="metric-value" id="settling-time-value">—</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label" data-term="overshoot">Overshoot:</span>
-                        <span class="metric-value" id="overshoot-value">—</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label" data-term="steady-state-error">Steady-State Error:</span>
-                        <span class="metric-value" id="ss-error-value">—</span>
-                    </div>
-                </div>
-            </section>
-
-            <section class="graphs-section">
-                <div class="graph-container">
-                    <canvas id="position-chart"></canvas>
-                </div>
-                <div class="graph-container">
-                    <canvas id="error-chart"></canvas>
-                </div>
-                <div class="graph-container">
-                    <canvas id="control-terms-chart"></canvas>
-                </div>
-            </section>
-        </div>
-
-        <div class="resize-handle" id="resize-handle"></div>
-
-        <aside class="side-panel" id="side-panel">
-            <div class="side-panel-header">
-                <h2>📚 Learn More</h2>
-                <button class="close-btn" id="close-panel-btn">✕</button>
-            </div>
-            <div class="side-panel-content">
-                <nav class="content-nav">
-                    <button class="nav-btn active" data-category="concepts">Concepts</button>
-                    <button class="nav-btn" data-category="terms">PID Terms</button>
-                    <button class="nav-btn" data-category="advanced">Advanced</button>
-                </nav>
-                <div class="content-area" id="content-area">
-                    <p class="placeholder">Click on any term in the equation or metrics to learn more.</p>
-                </div>
-            </div>
+            <nav class="tabs" role="tablist">
+                <button role="tab" data-category="concepts" aria-selected="true">Concepts</button>
+                <button role="tab" data-category="terms">P, I and D</button>
+                <button role="tab" data-category="advanced">Advanced</button>
+            </nav>
+            <div class="drawer-body" id="drawer-body"></div>
         </aside>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script type="module" src="js/app.js"></script>
 </body>
 </html>

@@ -1,80 +1,50 @@
 /**
- * Preset Scenarios for Demonstrating PID Behavior
+ * Preset scenarios. Each one replays a step from `from` to `to` so the response is
+ * visible, and most come in pairs that differ by one thing.
  *
- * Each preset demonstrates specific control concepts:
- * - Well-tuned: Fast response, moderate overshoot, settles quickly
- * - Too much P: Large overshoot and sustained oscillation
- * - No damping: Sustained oscillation without D term
- * - P-only (tilted rail): Steady-state error from constant disturbance
- * - Aggressive D: Sluggish, overly cautious response
+ * `expect` is checked by tools/validate-presets.mjs — run it after changing anything
+ * here or in the simulation, and keep `behaviour` in line with what it reports.
  */
 
 export const PRESETS = {
     'well-tuned': {
         name: 'Well-tuned',
-        description: 'Balanced gains for fast, stable response',
-        kp: 8.0,
-        ki: 3.0,
-        kd: 5.0,
-        friction: 0.5,
-        gravity: 0,
-        expectedBehavior: 'Fast rise (~1s), moderate overshoot (~19%), settles within ~7s'
+        behaviour: 'Fast, barely overshoots, settles in about 1.4 s with no error.',
+        kp: 15, ki: 1, kd: 6, friction: 0.5, gravity: 0, antiWindup: true, from: 30, to: 70,
+        expect: { overshoot: [0, 5], settlingTime: [0.8, 2.5], steadyStateError: [0, 0.3] },
     },
-    'too-much-p': {
-        name: 'Too much P',
-        description: 'Excessive proportional gain causes oscillation',
-        kp: 15.0,
-        ki: 0.0,
-        kd: 0.5,
-        friction: 0.5,
-        gravity: 0,
-        expectedBehavior: 'Large overshoot (~55%), sustained oscillation (~11 crossings)'
+    'p-only': {
+        name: 'P only',
+        behaviour: 'No damping from D: overshoots by more than half and rings for seconds.',
+        kp: 15, ki: 0, kd: 0, friction: 0.5, gravity: 0, antiWindup: true, from: 30, to: 70,
+        expect: { overshoot: [40, 80], crossings: [8, 40] },
     },
-    'no-damping': {
-        name: 'No damping',
-        description: 'No derivative term, system oscillates',
-        kp: 8.0,
-        ki: 0.0,
-        kd: 0.0,
-        friction: 0.5,
-        gravity: 0,
-        expectedBehavior: 'Large overshoot (~67%), sustained oscillation (~9 crossings)'
+    'too-much-d': {
+        name: 'Too much D',
+        behaviour: 'Over-damped: no overshoot, but it crawls in, taking about four times as long to settle.',
+        kp: 15, ki: 0, kd: 20, friction: 0.5, gravity: 0, antiWindup: true, from: 30, to: 70,
+        expect: { overshoot: [0, 1], riseTime: [2, 6], settlingTime: [3.5, 8] },
     },
-    'p-only-friction': {
-        name: 'P-only (tilted rail)',
-        description: 'No integral term, constant force causes steady-state error',
-        kp: 3.0,
-        ki: 0.0,
-        kd: 2.0,
-        friction: 0.3,
-        gravity: -5,
-        expectedBehavior: 'Cart stops short of target (SS error ~1.7) — needs Ki to fix'
+    'tilt-no-i': {
+        name: 'Tilted rail, no I',
+        behaviour: 'The tilt is a constant force. P and D alone stop short of the target.',
+        kp: 3, ki: 0, kd: 3, friction: 0.5, gravity: -10, antiWindup: true, from: 30, to: 70,
+        expect: { steadyStateError: [2.5, 4] },
     },
-    'aggressive-d': {
-        name: 'Aggressive D',
-        description: 'Excessive derivative gain makes response sluggish',
-        kp: 8.0,
-        ki: 0.1,
-        kd: 15.0,
-        friction: 0.5,
-        gravity: 0,
-        expectedBehavior: 'Very slow approach (~4s rise), minimal overshoot (~2%)'
-    }
+    'tilt-with-i': {
+        name: 'Tilted rail, with I',
+        behaviour: 'Same tilt and gains, plus a little I: the error is integrated away.',
+        kp: 3, ki: 1, kd: 3, friction: 0.5, gravity: -10, antiWindup: true, from: 30, to: 70,
+        expect: { steadyStateError: [0, 0.2] },
+    },
+    windup: {
+        name: 'Integral windup',
+        behaviour: 'Anti-windup off: I keeps growing while the force is maxed out, then overshoots.',
+        kp: 15, ki: 5, kd: 5, friction: 0.5, gravity: 0, antiWindup: false, from: 15, to: 65,
+        expect: { overshoot: [18, 40] },
+    },
 };
 
-/**
- * Get a preset configuration by name
- * @param {string} presetName - Name of the preset
- * @returns {object|null} - Preset configuration or null if not found
- */
-export function getPreset(presetName) {
-    return PRESETS[presetName] || null;
-}
-
-/**
- * Get all preset names
- * @returns {Array<string>} - Array of preset names
- */
-export function getPresetNames() {
-    return Object.keys(PRESETS);
+export function getPreset(name) {
+    return PRESETS[name] ?? null;
 }

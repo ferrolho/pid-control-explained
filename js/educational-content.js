@@ -91,7 +91,7 @@ export const EDUCATIONAL_CONTENT = {
                 </ul>
 
                 <h3>Try It</h3>
-                <p>Use the "Too much P" preset to see significant overshoot. Notice how the cart overshoots multiple times before settling.</p>
+                <p>Use the <strong>P only</strong> preset: the cart overshoots by more than half the step, and rings for seconds before settling.</p>
 
                 <h3>How to Reduce Overshoot</h3>
                 <ul>
@@ -116,7 +116,7 @@ export const EDUCATIONAL_CONTENT = {
                 </ul>
 
                 <h3>Try It</h3>
-                <p>Use the "No damping" preset (K<sub>d</sub>=0) to see sustained oscillation. The cart will bounce back and forth around the target.</p>
+                <p>Use the <strong>P only</strong> preset (K<sub>d</sub> = 0). The cart swings back and forth around the target; only the rail's friction slowly calms it down.</p>
 
                 <h3>How to Fix Oscillation</h3>
                 <ul>
@@ -132,7 +132,7 @@ export const EDUCATIONAL_CONTENT = {
             category: 'Concepts',
             shortDesc: 'Time to reach and stay within target band',
             content: `
-                <p>Settling time is the time it takes for the system to reach the target and stay within a small tolerance band (typically ±2% of the setpoint).</p>
+                <p>Settling time is the time it takes for the system to reach the target and stay within a small tolerance band. Here the band is ±2% of the step size around the target (shaded on the position plot), and the cart has to stay in it for a full second to count as settled.</p>
 
                 <h3>What Affects Settling Time?</h3>
                 <ul>
@@ -154,17 +154,17 @@ export const EDUCATIONAL_CONTENT = {
                 <p>Steady-state error is the difference between the target and actual position after the system has "settled" (stopped moving significantly).</p>
 
                 <h3>What Causes It?</h3>
-                <p>Constant disturbances like friction, gravity, or wind can prevent the system from reaching the exact target. The P and D terms can't eliminate this error because:</p>
+                <p>A constant force — gravity on a tilted rail, a steady wind, a load — can stop the system short of the target. (The friction in this demo is viscous: it only acts while the cart moves, so on its own it causes no steady-state error.) P and D can't remove this offset because:</p>
                 <ul>
-                    <li><strong>P term:</strong> As error approaches zero, P term approaches zero → not enough force to overcome friction</li>
+                    <li><strong>P term:</strong> It only pushes in proportion to the error, so it settles where K<sub>p</sub>·e exactly balances the constant force — at a non-zero error</li>
                     <li><strong>D term:</strong> When velocity is zero, D term is zero → provides no help</li>
                 </ul>
 
                 <h3>The Solution: Integral Term</h3>
-                <p>The I term accumulates error over time. Even a small steady-state error will eventually build up enough integral to generate sufficient force to overcome friction and reach the target.</p>
+                <p>The I term accumulates error over time. Even a small steady-state error keeps building the integral until it supplies the whole constant force by itself, and the error goes to zero.</p>
 
                 <h3>Try It</h3>
-                <p>Use the "P-only with friction" preset to see steady-state error. Notice the cart stops short of the target. Then add K<sub>i</sub> and watch the error disappear.</p>
+                <p>Compare <strong>Tilted rail, no I</strong> with <strong>Tilted rail, with I</strong>. They differ only in K<sub>i</sub>: the first stops short of the target, the second gets there.</p>
             `,
             relatedTerms: ['integral', 'proportional']
         },
@@ -198,7 +198,7 @@ export const EDUCATIONAL_CONTENT = {
                 <p>Disturbance rejection is the controller's ability to maintain the target when external forces try to push the system away.</p>
 
                 <h3>Try It</h3>
-                <p>Click the "Add Disturbance" button to apply a sudden force to the cart. Watch how the PID controller automatically corrects and brings the cart back to the target.</p>
+                <p>Click <strong>Push cart</strong> to apply a sudden force to the cart. Watch how the PID controller automatically corrects and brings the cart back to the target.</p>
 
                 <h3>Which Terms Help?</h3>
                 <ul>
@@ -237,7 +237,7 @@ export const EDUCATIONAL_CONTENT = {
                 <h3>Limitations</h3>
                 <p>P-only control has two main problems:</p>
                 <ul>
-                    <li><strong>Steady-state error:</strong> With friction present, the spring force might not be enough to reach the target exactly</li>
+                    <li><strong>Steady-state error:</strong> Against a constant force (like the tilt), a spring alone settles short of the target</li>
                     <li><strong>Overshoot:</strong> Momentum can carry past the target before the reduced spring force can stop it</li>
                 </ul>
 
@@ -257,16 +257,16 @@ export const EDUCATIONAL_CONTENT = {
                 <p>The integral term accumulates (sums up) the error over time. Even small errors, if persistent, will build up a large integral.</p>
 
                 <h3>Physical Intuition: Bucket Filling</h3>
-                <p>Imagine a <strong>bucket slowly filling with water</strong>. Each moment of error adds more water. When the bucket is full enough, it tips over and provides extra force to overcome friction or other constant disturbances.</p>
+                <p>Imagine a <strong>bucket slowly filling with water</strong>. Each moment of error adds more water. When the bucket is full enough, it tips over and provides the extra force needed to cancel a constant disturbance, like the tilt of the rail.</p>
 
                 <h3>Why It's Needed</h3>
-                <p>The I term is the <strong>only way to eliminate steady-state error</strong>. When friction or other constant forces prevent the system from reaching the target, the integral term keeps building until it generates enough force to overcome the resistance.</p>
+                <p>The I term is the <strong>only way to eliminate steady-state error</strong>. When a constant force prevents the system from reaching the target, the integral term keeps building until it generates enough force to overcome the resistance.</p>
 
                 <h3>Effect of K<sub>i</sub></h3>
                 <ul>
                     <li><strong>Higher K<sub>i</sub>:</strong> Faster elimination of steady-state error, but can cause overshoot and sluggish response</li>
                     <li><strong>Lower K<sub>i</sub>:</strong> Slower error elimination, but more stable</li>
-                    <li><strong>K<sub>i</sub> = 0:</strong> Steady-state error will persist if friction is present</li>
+                    <li><strong>K<sub>i</sub> = 0:</strong> Steady-state error persists whenever a constant force acts (tilt the rail to see it)</li>
                 </ul>
 
                 <h3>Potential Problems</h3>
@@ -277,7 +277,7 @@ export const EDUCATIONAL_CONTENT = {
                 </ul>
 
                 <h3>Try It</h3>
-                <p>Use the "P-only with friction" preset to see steady-state error, then slowly increase K<sub>i</sub> and watch the error disappear.</p>
+                <p>Load <strong>Tilted rail, no I</strong>, then slowly raise K<sub>i</sub> and watch the error disappear.</p>
             `,
             relatedTerms: ['steady-state-error', 'integral-windup', 'proportional']
         },
@@ -323,7 +323,7 @@ export const EDUCATIONAL_CONTENT = {
                 <p>This demo uses "derivative on measurement" rather than "derivative on error" to avoid "derivative kick" when the setpoint changes suddenly.</p>
 
                 <h3>Try It</h3>
-                <p>Use the "No damping" preset (K<sub>d</sub>=0) to see oscillation, then slowly increase K<sub>d</sub> and watch the oscillations dampen.</p>
+                <p>Load <strong>P only</strong> (K<sub>d</sub> = 0) to see the oscillation, then slowly raise K<sub>d</sub> and watch it die out. Push it too far and you get <strong>Too much D</strong>: no overshoot, but a slow crawl.</p>
             `,
             relatedTerms: ['overshoot', 'oscillation', 'derivative-kick']
         }
@@ -343,7 +343,10 @@ export const EDUCATIONAL_CONTENT = {
                 <p>When the system finally reaches the target, there's a huge integral term that takes a long time to "unwind," causing significant overshoot.</p>
 
                 <h3>Solution: Anti-Windup</h3>
-                <p>This demo implements anti-windup by <strong>clamping the integral term</strong> to a maximum value. Once the integral reaches this limit, it stops accumulating until the error decreases.</p>
+                <p>This demo uses <strong>conditional integration</strong>: while the output is saturated, the integral stops accumulating whenever that would push the output further into saturation. It keeps integrating when that helps pull the output back out.</p>
+
+                <h3>Try It</h3>
+                <p>Load <strong>Integral windup</strong> (anti-windup off) and watch the I term grow while the force is pinned at its limit, then overshoot. Switch <strong>Anti-windup</strong> on and replay the step.</p>
 
                 <h3>Real-World Impact</h3>
                 <p>Windup is especially problematic in systems with:</p>
@@ -462,7 +465,7 @@ export const EDUCATIONAL_CONTENT = {
                 <p>Real-world controllers are digital: they read sensors and compute control outputs at discrete time intervals (the sample time, dt).</p>
 
                 <h3>In This Demo</h3>
-                <p>The simulation runs at 60 Hz, meaning dt = 0.0167 seconds. The PID controller updates 60 times per second.</p>
+                <p>The controller here runs at 100 Hz (dt = 0.01 s) and holds its output between updates, like a real digital controller. The physics is integrated ten times finer, at 1 kHz, and both run on a fixed clock — independent of your screen's refresh rate.</p>
 
                 <h3>Why Sample Time Matters</h3>
                 <ul>
@@ -472,7 +475,7 @@ export const EDUCATIONAL_CONTENT = {
                 </ul>
 
                 <h3>Rule of Thumb</h3>
-                <p>Sample at least 10× faster than the system's natural response time. For this cart demo, the system settles in a few seconds, so 60 Hz is more than adequate.</p>
+                <p>Sample at least 10× faster than the system's natural response time. For this cart demo, the system settles in a few seconds, so 100 Hz is more than adequate.</p>
 
                 <h3>Practical Considerations</h3>
                 <ul>

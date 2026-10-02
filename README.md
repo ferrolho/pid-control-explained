@@ -1,236 +1,75 @@
 # PID Control, Explained
 
-An educational web application for learning PID (Proportional-Integral-Derivative) control through interactive visualization and hands-on experimentation.
+**[Live demo →](https://ferrolho.github.io/pid-control-explained/)**
 
-**[Live Demo](https://ferrolho.github.io/pid-control-explained/)**
+An interactive explanation of PID control. Tune P, I, and D on a simulated cart and watch what each term does: in the cart's force arrows, in live plots of position and control force, and in step-response metrics. A slide-over **Learn** panel explains every concept, and anything clickable on the page opens it at that topic.
 
-## Overview
+## The system
 
-PID control is fundamental to robotics, automation, and control systems. This demo helps you build intuitive understanding through interactive visualization rather than just equations and theory.
+A cart slides along a rail (positions 0–100). The controller applies one force, limited to ±100. The cart obeys *F = ma* with viscous friction, and tilting the rail adds a constant force along it. **Push cart** adds a sudden disturbance that decays over a third of a second.
 
-### System Model
-
-A 1D cart slides along a bounded rail (0–100). The controller applies a single scalar **force** to the cart — this is the only control input. The cart obeys Newton's second law (`F = ma`) with viscous friction and optional gravity (tilted rail). The goal is to drive the cart's position to a desired target.
-
-|                   | Description                                                    |
-| ----------------- | -------------------------------------------------------------- |
-| **State**         | Position, velocity                                             |
-| **Control input** | Force ∈ [-100, 100]                                            |
-| **Parameters**    | Mass (inertia), friction (viscous damping), gravity (constant) |
-| **Disturbances**  | Impulse forces that decay over time                            |
-
-### Learning Objectives
-
-- Understand what each PID term (P, I, D) does and when it's needed
-- Develop intuition for tuning trade-offs (speed vs stability vs accuracy)
-- Recognize common control behaviors: overshoot, oscillation, steady-state error
-- Experiment with different scenarios to build mental models
-
-## Features
-
-### Interactive Visualization
-- Real-time 1D cart simulation with physics (mass, friction, disturbances)
-- Live graphs showing position, error, and PID term contributions
-- Motion trails to visualize behavior
-
-### Educational Content
-- Clickable equation terms with detailed explanations
-- Side panel with comprehensive learning materials covering:
-  - Core concepts (feedback control, error signals, overshoot, etc.)
-  - Detailed PID term explanations with physical intuitions
-  - Advanced topics (integral windup, derivative kick, tuning methods)
-
-### Preset Scenarios
-Demonstrate key control concepts:
-- **Well-tuned**: Fast response (~1s rise), moderate overshoot (~19%), settles within ~7s
-- **Too much P**: Large overshoot (~55%) and sustained oscillation (~11 crossings)
-- **No damping**: Oscillation without D term (~67% overshoot, ~9 crossings)
-- **P-only (tilted rail)**: Steady-state error from constant force — needs I term to fix
-- **Aggressive D**: Sluggish, overly cautious response (~4s rise, ~2% overshoot)
-
-### Interactive Controls
-- Adjust PID gains (Kp, Ki, Kd) with live updates
-- Manual target positioning via slider or canvas click
-- Auto-step mode: automatic alternating setpoints for systematic observation
-- Add disturbances to test controller robustness
-
-### Performance Metrics
-Real-time display of:
-- Rise time
-- Settling time
-- Overshoot percentage
-- Steady-state error
-
-## The PID Algorithm
-
-The PID controller generates a control signal based on three terms:
+## The controller
 
 ```
-u(t) = Kp·e(t) + Ki·∫e(t)dt + Kd·de(t)/dt
+u = Kp·e + Ki·∫e dt − Kd·dx/dt        e = target − position
 ```
 
-Where:
-- **u(t)** = control signal (force applied to cart)
-- **e(t)** = error signal (target - actual position)
-- **Kp** = proportional gain
-- **Ki** = integral gain
-- **Kd** = derivative gain
+- **Derivative on measurement**, so moving the target doesn't cause a derivative kick.
+- **Output limit** of ±100.
+- **Anti-windup** by conditional integration: while the output is saturated, the integral only grows if that pulls the output back out. Switch it off to see windup.
+- **Fixed clock:** the controller runs at 100 Hz and holds its output between updates; the physics integrates at 1 kHz. Both are independent of the display's refresh rate.
 
-### Physical Intuitions
+## Presets
 
-- **P term (Kp·e)**: Acts like a **spring** pulling toward the target. Larger error = stronger pull.
-- **I term (Ki·∫e·dt)**: Acts like a **bucket filling with water**. Accumulates past errors to eliminate steady-state offset.
-- **D term (Kd·de/dt)**: Acts like a **shock absorber**. Provides damping to prevent overshoot.
+Each preset replays a step response; most come in pairs that differ in one thing. `node tools/validate-presets.mjs` simulates them headlessly and fails if one stops behaving as described:
 
-## How to Use
+| Preset | Kp / Ki / Kd | What it shows |
+|---|---|---|
+| Well-tuned | 15 / 1 / 6 | 1.7% overshoot, settles in 1.35 s |
+| P only | 15 / 0 / 0 | 60% overshoot, rings for seconds |
+| Too much D | 15 / 0 / 20 | No overshoot, but takes 5.3 s to settle |
+| Tilted rail, no I | 3 / 0 / 3 | Stops 3.3 short of the target |
+| Tilted rail, with I | 3 / 1 / 3 | Same tilt, error integrated away |
+| Integral windup | 15 / 5 / 5, anti-windup off | 26% overshoot after saturating (6.6% with it on) |
 
-### Basic Exploration
-1. Watch the cart track the target position
-2. Drag the target slider or click on the canvas to set a new target
-3. Observe how the cart responds
+`?preset=<id>` in the URL opens a preset directly, and `?theme=light|dark` overrides the system theme (used when embedded).
 
-### Experimenting with Gains
-1. Try the preset scenarios to see different behaviors
-2. Adjust individual gains (Kp, Ki, Kd) to see their effects:
-   - **Increase Kp**: Faster response, but more overshoot/oscillation
-   - **Increase Ki**: Eliminates steady-state error, but can cause sluggishness
-   - **Increase Kd**: Reduces overshoot, dampens oscillations, but can slow response
+## Metrics
 
-### Learning with Side Panel
-1. Click on terms in the equation (Kp, Ki, Kd, e(t), etc.)
-2. Explore three content categories:
-   - **Concepts**: Fundamental control theory ideas
-   - **PID Terms**: Detailed P, I, D explanations
-   - **Advanced**: Integral windup, derivative kick, tuning methods
+- **Rise time:** from 10% to 90% of the step.
+- **Overshoot:** the largest excursion past the target, as a percentage of the step.
+- **Settling time:** until the cart enters and stays within ±2% of the step (confirmed after 1 s).
+- **Steady-state error:** once the cart has been at rest for 1 s.
 
-### Testing Disturbance Rejection
-1. Click "Add Disturbance" to apply an impulse force
-2. Watch how the controller compensates
-3. Try with different gain settings to see effect on disturbance rejection
+## Files
 
-### Auto-Step Mode
-1. Enable "Auto-step mode" checkbox
-2. System automatically alternates between positions every 5 seconds
-3. Useful for comparing different tuning configurations
+| File | What |
+|---|---|
+| `js/simulation.js`, `js/pid-controller.js` | The cart and the controller |
+| `js/runner.js` | Couples them on the fixed clock |
+| `js/metrics.js` | Step-response metrics |
+| `js/presets.js` | Presets, with the ranges the validator checks |
+| `js/stage.js`, `js/plots.js` | Canvas drawing: the cart, and the scrolling plots |
+| `js/learn.js`, `js/educational-content.js` | The Learn panel and its content |
+| `js/app.js` | Wires it all to the page |
+| `styles/app.css` | Light and dark themes |
 
-## Technical Implementation
+No build step and no dependencies: plain ES modules, served as static files.
 
-### Controller Features
-- **Integral anti-windup**: Clamps accumulated integral to prevent windup
-- **Derivative on measurement**: Avoids "derivative kick" on setpoint changes
-- **Output saturation**: Limits control signal to realistic actuator constraints
+## Run locally
 
-### Performance
-- Runs at 60 FPS with Euler integration (dt = 0.0167s)
-- Graphs show last 10 seconds of data (600 points)
-- Responsive design works on desktop, tablet, and mobile
-
-## File Structure
-
-```
-pid-control-explained/
-├── index.html                  # Main page
-├── styles/
-│   ├── main.css               # Layout & responsive design
-│   ├── components.css         # UI component styling
-│   └── side-panel.css         # Educational panel styling
-├── js/
-│   ├── app.js                 # Main application orchestration
-│   ├── pid-controller.js      # PID algorithm implementation
-│   ├── simulation.js          # Cart physics simulation
-│   ├── visualization.js       # Canvas rendering
-│   ├── graphs.js              # Chart.js wrapper
-│   ├── presets.js             # Preset configurations
-│   ├── side-panel.js          # Side panel UI component
-│   └── educational-content.js # Learning content
-└── README.md
+```bash
+python3 -m http.server 8000      # then open http://localhost:8000
+node tools/validate-presets.mjs  # check the presets
 ```
 
-## Technologies Used
-
-- **Vanilla JavaScript** (ES6 modules) - no build tools required
-- **Chart.js 4.x** - time-series graphs
-- **HTML5 Canvas** - cart animation
-- **CSS Grid/Flexbox** - responsive layout
-
-## Browser Requirements
-
-Modern browsers with ES6 module support:
-- Chrome/Edge 61+
-- Firefox 60+
-- Safari 11+
-
-No transpilation needed.
-
-## Local Development
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/ferrolho/pid-control-explained.git
-   cd pid-control-explained
-   ```
-
-2. Serve with any static file server:
-   ```bash
-   # Python 3
-   python3 -m http.server 8000
-
-   # Node.js (http-server)
-   npx http-server
-
-   # VS Code Live Server extension
-   # Right-click index.html → "Open with Live Server"
-   ```
-
-3. Open in browser: `http://localhost:8000`
-
-## GitHub Pages Deployment
-
-1. Push code to GitHub repository
-2. Go to repository Settings → Pages
-3. Select "Deploy from main branch" and root directory
-4. Site will be available at `https://ferrolho.github.io/pid-control-explained/`
-
-## Future Enhancements
-
-**Version 1.1:**
-- Mass and friction adjustment sliders
-- Guided tutorial mode with step-by-step overlay
-- Export data as CSV
-- URL parameter sharing for specific configurations
-
-**Version 2.0:**
-- Multiple system models (temperature, motor speed)
-- Auto-tuning algorithms (Ziegler-Nichols)
-- Frequency domain visualization (Bode plots)
-- Comparison mode (side-by-side controllers)
-
-## Educational Context
-
-This demo was created as part of robotics tutoring materials. It emphasizes:
-- **Learning by doing**: Interactive exploration over passive reading
-- **Physical intuition**: Connecting math to real-world behavior
-- **Progressive disclosure**: Start simple, add complexity as understanding grows
-
-Perfect for:
-- Control systems students
-- Robotics engineers
-- Anyone curious about how feedback control works
+GitHub Pages serves the `main` branch as is.
 
 ## References
 
-- Franklin, G.F., Powell, J.D., & Emami-Naeini, A. (2019). *Feedback Control of Dynamic Systems* (8th ed.)
-- Åström, K.J., & Murray, R.M. (2021). *Feedback Systems: An Introduction for Scientists and Engineers* (2nd ed.)
-- [Wikipedia: PID Controller](https://en.wikipedia.org/wiki/PID_controller)
+- K. J. Åström and R. M. Murray, *Feedback Systems: An Introduction for Scientists and Engineers*, 2nd ed., 2021.
+- G. F. Franklin, J. D. Powell, and A. Emami-Naeini, *Feedback Control of Dynamic Systems*, 8th ed., 2019.
 
-## License
+## Licence
 
-This project is open source and available for educational use.
-
-## Contact
-
-Created for robotics tutoring - feel free to use and adapt for educational purposes.
-
----
-
-**Tip**: Start with the "Well-tuned" preset, then try "Too much P" to see what happens when gains are poorly chosen. Use the side panel to understand *why* each behavior occurs!
+MIT — see [LICENSE](LICENSE).
