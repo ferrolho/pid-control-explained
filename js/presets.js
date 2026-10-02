@@ -9,7 +9,7 @@
 export const PRESETS = {
     'well-tuned': {
         name: 'Well-tuned',
-        behaviour: 'Fast, barely overshoots, settles in about 1.4 s with no error.',
+        behaviour: 'Fast and barely overshoots: inside the ±2% band in about 1.4 s. Then the I term slowly trims away the last fraction of error.',
         kp: 15, ki: 1, kd: 6, friction: 0.5, gravity: 0, antiWindup: true, from: 30, to: 70,
         expect: { overshoot: [0, 5], settlingTime: [0.8, 2.5], steadyStateError: [0, 0.3] },
     },
